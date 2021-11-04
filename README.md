@@ -47,7 +47,7 @@ If you want to embed the configuration in docker image, juste create a `terustry
 ```bash
 $ curl http://localhost:8080/terraform/providers/v1/hashicorp/hashicups/versions
 ```
-```json
+```javascript
 {
   id: "hashicorp/hashicups",
   versions: [{
@@ -63,7 +63,7 @@ $ curl http://localhost:8080/terraform/providers/v1/hashicorp/hashicups/versions
 }
 ```
 #### With terraform
-```
+```terraform
 terraform {
   required_providers {
     hashicups = {
