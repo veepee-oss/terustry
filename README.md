@@ -29,15 +29,19 @@ Then it will use the `artifact` section to build the download urls of your provi
 
 ### Run
 
-#### With cargo
+#### With docker
 ```bash
-TERUSTRY_GITHUB_TOKEN=XXXX cargo run -- --config terustry-sample-github.yml
+docker run -p 8080:8080 -e TERUSTRY_GITHUB_TOKEN='XXX' -v $(pwd)/terustry-sample-github.yml:/etc/terustry.yml --rm -it vptech/terustry
 ```
 
-#### With docker
+#### With docker build
 ```bash
 docker build -t terustry .
 docker run -p 8080:8080 -e TERUSTRY_GITHUB_TOKEN='XXX' -v $(pwd)/terustry-sample-github.yml:/etc/terustry.yml --rm -it terustry
+```
+#### With cargo
+```bash
+TERUSTRY_GITHUB_TOKEN=XXXX cargo run -- --config terustry-sample-github.yml
 ```
 
 If you want to embed the configuration in docker image, juste create a `terustry.yml` file with your configuration.
