@@ -1,5 +1,5 @@
 # Terustry
-Simple configurable proxy that implement [terraform provider registry protocol](https://www.terraform.io/docs/internals/provider-registry-protocol.html).
+Simple configurable proxy that implement [terraform provider registry protocol](https://www.terraform.io/docs/internals/provider-registry-protocol.html), to build your own terraform provider private registry.
 
 ### How it works
 Terustry use a yaml file to describe how to discover versions and download urls.
