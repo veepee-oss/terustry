@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-use std::fs;
-use std::error::Error;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
+use std::fs;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ConfigurationProvider {
@@ -60,11 +59,21 @@ pub struct Configuration {
 }
 pub fn os_env_hashmap() -> HashMap<String, String> {
     env::vars_os()
-        .filter(|v| v.0.to_owned().into_string().unwrap().to_lowercase().starts_with("terustry_"))
-        .map(|v| (v.0.into_string().unwrap().to_lowercase(), v.1.into_string().unwrap()))
+        .filter(|v| {
+            v.0.to_owned()
+                .into_string()
+                .unwrap()
+                .to_lowercase()
+                .starts_with("terustry_")
+        })
+        .map(|v| {
+            (
+                v.0.into_string().unwrap().to_lowercase(),
+                v.1.into_string().unwrap(),
+            )
+        })
         .collect()
-
 }
-pub async fn load_conf(file: String) -> Result<Configuration, Box<dyn Error>> {
+pub async fn load_conf(file: String) -> anyhow::Result<Configuration> {
     Ok(serde_yaml::from_str(&fs::read_to_string(file)?)?)
 }

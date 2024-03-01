@@ -61,3 +61,13 @@ pub struct GpgPublicKey {
     #[serde()]
     pub ascii_armor: String,
 }
+
+#[derive(Serialize)]
+pub struct Root {
+    pub ok: bool,
+}
+
+#[derive(Serialize)]
+pub struct WellKnown {
+    pub providers_v1: String,
+}

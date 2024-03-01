@@ -1,102 +1,124 @@
-use actix_web::{App, error, Error, get, HttpResponse, HttpServer, Responder, web};
-use actix_web::error::ErrorNotFound;
-use crate::conf::{Configuration, ConfigurationProvider};
-use crate::models::*;
-use clap::Parser;
+use std::sync::Arc;
 
+use crate::conf::{Configuration, ConfigurationProvider};
+use crate::errors::AppError;
+use crate::models::*;
+use anyhow::anyhow;
+use axum::extract::{Path, State};
+use axum::routing::get;
+
+use axum::{Json, Router};
+use clap::Parser;
+use reqwest::Client;
+use tracing::info;
+
+mod artifacts;
+mod conf;
+mod errors;
+mod github;
 mod gitlab;
 mod models;
-mod conf;
-mod artifacts;
-mod github;
+mod versions;
 
-#[get("/")]
-async fn root() -> impl Responder {
-    HttpResponse::Ok().content_type("application/json").body(r#"{"ok": true}"#)
+async fn root() -> Json<Root> {
+    Json(Root { ok: true })
 }
 
-#[get("/.well-known/terraform.json")]
-async fn well_known() -> impl Responder {
-    HttpResponse::Ok().content_type("application/json").body(r#"{"providers.v1": "/terraform/providers/v1/"}"#)
+async fn well_known() -> Json<WellKnown> {
+    Json(WellKnown {
+        providers_v1: "/terraform/providers/v1/".to_string(),
+    })
 }
 
-fn get_provider_conf(data: web::Data<AppState>, namespace: String, name: String) -> Option<ConfigurationProvider> {
-    data.conf.clone().providers.into_iter().find(|p| p.name == format!("{}/{}", namespace, name))
+fn get_provider_conf(
+    conf: &Configuration,
+    namespace: String,
+    name: String,
+) -> anyhow::Result<ConfigurationProvider> {
+    conf.providers
+        .iter()
+        .find(|&p| p.name == format!("{}/{}", namespace, name))
+        .cloned()
+        .ok_or(anyhow!(format!("Provider {} not found", name)))
 }
 
-#[get("/terraform/providers/v1/{namespace}/{name}/versions")]
-async fn versions(data: web::Data<AppState>, web::Path((namespace, name)): web::Path<(String, String)>) -> Result<HttpResponse, Error> {
-    match get_provider_conf(data, namespace, name) {
-        Some(provider) => {
-            Ok(HttpResponse::Ok()
-                .content_type("application/json")
-                .body(
-                    serde_json::to_string::<VersionsResponse>(
-                        &VersionsResponse {
-                            id: provider.name.clone(),
-                            versions: match provider.version.kind.as_str() {
-                                "gitlab" => gitlab::versions(&provider).await.map_err(|e| error::ErrorInternalServerError(e.to_string()))?,
-                                "github" => github::versions(&provider).await.map_err(|e| error::ErrorInternalServerError(e.to_string()))?,
-                                _ => return Err(ErrorNotFound(String::from("Provider not found"))),
-                            }.iter().map(|version| {
-                                Version {
-                                    version: version.to_owned().trim_start_matches("v").to_string(),
-                                    protocols: provider.protocols.to_owned(),
-                                    platforms: provider.binaries.to_owned().into_iter().map(|binary| {
-                                        VersionPlatform { os: binary.os, arch: binary.arch }
-                                    }).collect::<Vec<VersionPlatform>>(),
-                                }
-                            }).collect()
-                        }
-                    )?))
-        }
-        None => Err(ErrorNotFound(String::from("Provider not found"))),
-    }
+async fn versions(
+    State(data): State<Arc<AppState>>,
+    Path((namespace, name)): Path<(String, String)>,
+) -> Result<Json<VersionsResponse>, AppError> {
+    info!("list versions");
+    let provider = get_provider_conf(&data.conf, namespace, name)?;
+    Ok(Json(VersionsResponse {
+        id: provider.name.clone(),
+        versions: versions::get_versions(&data.client, &provider)
+            .await?
+            .iter()
+            .map(|version| Version {
+                version: version.to_owned().trim_start_matches('v').to_string(),
+                protocols: provider.protocols.to_owned(),
+                platforms: provider
+                    .binaries
+                    .iter()
+                    .cloned()
+                    .map(|binary| VersionPlatform {
+                        os: binary.os,
+                        arch: binary.arch,
+                    })
+                    .collect::<Vec<VersionPlatform>>(),
+            })
+            .collect(),
+    }))
 }
 
-#[get("/terraform/providers/v1/{namespace}/{name}/{version}/download/{os}/{arch}")]
-async fn download(data: web::Data<AppState>, web::Path((namespace, name, version, os, arch)): web::Path<(String, String, String, String, String)>) -> Result<HttpResponse, Error> {
-    match get_provider_conf(data, namespace, name) {
-        Some(provider) => Ok(HttpResponse::Ok()
-            .content_type("application/json")
-            .body(serde_json::to_string::<DownloadResponse>(
-                &artifacts::get(provider, version, os, arch).await.map_err(|e| error::ErrorInternalServerError(e.to_string()))?
-            )?)),
-        None => Err(ErrorNotFound(String::from("Provider not found"))),
-    }
+async fn download(
+    State(data): State<Arc<AppState>>,
+    Path((namespace, name, version, os, arch)): Path<(String, String, String, String, String)>,
+) -> Result<Json<DownloadResponse>, AppError> {
+    info!("download");
+    Ok(Json(
+        artifacts::get(
+            &data.client,
+            get_provider_conf(&data.conf, namespace, name)?,
+            version,
+            os,
+            arch,
+        )
+        .await?,
+    ))
 }
 
 struct AppState {
     conf: Configuration,
+    client: Client,
 }
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[clap(version = "1.0")]
 struct Opts {
     #[clap(short, long, default_value = "/etc/terustry.yml")]
     config: String,
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let opts: Opts = Opts::parse();
+    tracing_subscriber::fmt().json().init();
+    log::info!("Starting terustry");
 
-    match conf::load_conf(opts.config).await {
-        Ok(conf) => {
-            HttpServer::new(move || {
-                App::new()
-                    .data(AppState {
-                        conf: conf.clone(),
-                    })
-                    .service(root)
-                    .service(well_known)
-                    .service(versions)
-                    .service(download)
-            })
-                .bind("0.0.0.0:8080")?.run().await
-        }
-        Err(e) => {
-            Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Fail to load configuration {}", e)))
-        }
-    }
+    let app = Router::new()
+        .route("/", get(root))
+        .route("/.well-known/terraform.json", get(well_known))
+        .route(
+            "/terraform/providers/v1/:namespace/:name/versions",
+            get(versions),
+        )
+        .route(
+            "/terraform/providers/v1/:namespace/:name/:version/download/:os/:arch",
+            get(download),
+        )
+        .with_state(Arc::new(AppState {
+            conf: conf::load_conf(opts.config).await?,
+            client: Client::new(),
+        }));
+    Ok(axum::serve(tokio::net::TcpListener::bind("0.0.0.0:8080").await?, app).await?)
 }

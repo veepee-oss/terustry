@@ -1,10 +1,8 @@
-use std::error::Error;
-use std::str;
-
-use actix_web::client::Client;
-use actix_web::http::StatusCode;
+use anyhow::Result;
 use handlebars::Handlebars;
+use reqwest::Client;
 use serde::Deserialize;
+use std::str;
 
 use crate::conf;
 use crate::conf::ConfigurationProvider;
@@ -17,14 +15,19 @@ pub struct GitlabReleaseListResponse {
     pub tag_name: String,
 }
 
-pub async fn versions(provider: &ConfigurationProvider) -> Result<Vec<String>, Box<dyn Error>> {
-    let token = Handlebars::new().render_template(&provider.version.token, &conf::os_env_hashmap())?;
-
-    let mut response = Client::default().get(format!("{}?private_token={}", provider.version.uri, token)).send().await?;
-    match response.status() {
-        StatusCode::OK => Ok(serde_json::from_str::<Vec<GitlabReleaseListResponse>>(str::from_utf8(&response.body().await?)?)?.iter().map(|element| element.tag_name.to_owned()).collect()),
-        s => Err(String::from(format!("Gitlab response {}", s)).into()),
-    }
+pub async fn versions(client: &Client, provider: &ConfigurationProvider) -> Result<Vec<String>> {
+    Ok(client
+        .get(format!("{}?per_page=100", provider.version.uri))
+        .header(
+            "PRIVATE-TOKEN",
+            Handlebars::new().render_template(&provider.version.token, &conf::os_env_hashmap())?
+        )
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Vec<GitlabReleaseListResponse>>()
+        .await?
+        .iter()
+        .map(|element| element.tag_name.to_owned())
+        .collect())
 }
-
-

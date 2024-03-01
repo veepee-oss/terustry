@@ -1,39 +1,61 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::str;
-
-use actix_web::client::Client;
-use actix_web::http::{header, StatusCode};
+use anyhow::Result;
 use handlebars::Handlebars;
-use async_recursion::async_recursion;
+use reqwest::Client;
+use std::collections::HashMap;
 
 use crate::conf::ConfigurationProvider;
 use crate::models::{DownloadResponse, GpgPublicKey, SigningKey};
 
-#[async_recursion(?Send)]
-pub async fn sha(uri: String, version: String, os: String, arch: String) -> Result<String, Box<dyn Error>> {
-    let mut response = Client::new().get(uri).send().await?;
-    match response.status() {
-        StatusCode::FOUND => sha(response.headers().get(header::LOCATION).unwrap().to_str().unwrap().to_string(), version, os, arch).await,
-        StatusCode::OK => Ok(
-            String::from(String::from(str::from_utf8(&response.body().await?)?)
-                .split('\n')
-                .into_iter()
-                .find(|&x| x.contains(format!("{}_{}", os, arch).as_str()))
-                .map_or(Err(format!("Line not found for {} {} {}", version, os, arch)), |line| {
+pub async fn sha(
+    client: &Client,
+    uri: String,
+    version: String,
+    os: String,
+    arch: String,
+) -> Result<String> {
+    Ok(String::from(
+        client
+            .get(uri)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?
+            .split('\n')
+            .find(|&x| x.contains(format!("{}_{}", os, arch).as_str()))
+            .map_or(
+                Err(anyhow::anyhow!(
+                    "Line not found for {} {} {}",
+                    version,
+                    os,
+                    arch
+                )),
+                |line| {
                     line.split(' ')
-                        .into_iter()
-                        .filter(|e| e.len() == 64)
-                        .next()
-                        .ok_or(String::from(format!("Can't parse line [{}] to extract sha", line)))
-                })?
-            )
-        ),
-        s => Err(String::from(format!("Artifacts response {}", s)).into()),
-    }
+                        .find(|e| e.len() == 64)
+                        .ok_or(anyhow::anyhow!(format!(
+                            "Can't parse line [{}] to extract sha",
+                            line
+                        )))
+                },
+            )?,
+    ))
 }
 
-pub async fn get(provider: ConfigurationProvider, version: String, os: String, arch: String) -> Result<DownloadResponse, Box<dyn Error>> {
+#[cached::proc_macro::cached(
+    result = true,
+    sync_writes = true,
+    time = 600,
+    key = "String",
+    convert = r#"{ format!("get_artifacts_{}_{}_{}_{}", provider.name, version, os, arch) }"#
+)]
+pub async fn get(
+    client: &Client,
+    provider: ConfigurationProvider,
+    version: String,
+    os: String,
+    arch: String,
+) -> Result<DownloadResponse> {
     let hb = Handlebars::new();
     let conf: HashMap<String, String> = HashMap::from([
         (String::from("version"), version.to_owned()),
@@ -47,15 +69,21 @@ pub async fn get(provider: ConfigurationProvider, version: String, os: String, a
         filename: hb.render_template(&provider.artifact.filename, &conf)?,
         download_url: hb.render_template(&provider.artifact.download_url, &conf)?,
         shasums_url: hb.render_template(&provider.artifact.shasums_url, &conf)?,
-        shasums_signature_url: hb.render_template(&provider.artifact.shasums_signature_url, &conf)?,
-        shasum: sha(hb.render_template(&provider.artifact.shasums_url, &conf)?, version, os, arch).await?,
+        shasums_signature_url: hb
+            .render_template(&provider.artifact.shasums_signature_url, &conf)?,
+        shasum: sha(
+            client,
+            hb.render_template(&provider.artifact.shasums_url, &conf)?,
+            version,
+            os,
+            arch,
+        )
+        .await?,
         signing_keys: SigningKey {
-            gpg_public_keys: vec![
-                GpgPublicKey {
-                    key_id: provider.signature.key_id,
-                    ascii_armor: provider.signature.key_armor,
-                }
-            ]
+            gpg_public_keys: vec![GpgPublicKey {
+                key_id: provider.signature.key_id,
+                ascii_armor: provider.signature.key_armor,
+            }],
         },
     })
 }

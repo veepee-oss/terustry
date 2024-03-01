@@ -1,12 +1,12 @@
-FROM rust:1.56 as builder
+FROM rust:1.76 as builder
 
-WORKDIR ./terustry
-ADD . ./
+WORKDIR /terustry
+COPY . ./
 
 RUN cargo build --release
 
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 ARG APP=/usr/src/app
 
 RUN apt-get update \

@@ -1,10 +1,10 @@
 providers:
-  - name: hashicorp/hashicups
+  - name: hashicorp/terraform-provider-aws
     protocols:
       - 5.0
     version:
       type: github
-      uri: https://api.github.com/repos/hashicorp/terraform-provider-hashicups/releases
+      uri: https://api.github.com/repos/hashicorp/terraform-provider-aws/releases
       token: "{{terustry_github_token}}"
     binaries:
       - os: freebsd
@@ -33,7 +33,7 @@ providers:
       key_id: 97751AE79C450B19
       key_armor: "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n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\n=X8NX\n-----END PGP PUBLIC KEY BLOCK-----"
     artifact:
-      filename: terraform-provider-hashicups_{{version}}_{{os}}_{{arch}}.zip
-      download_url: https://github.com/hashicorp/terraform-provider-hashicups/releases/download/v{{version}}/terraform-provider-hashicups_{{version}}_{{os}}_{{arch}}.zip
-      shasums_url: https://github.com/hashicorp/terraform-provider-hashicups/releases/download/v{{version}}/terraform-provider-hashicups_{{version}}_SHA256SUMS
-      shasums_signature_url: https://github.com/hashicorp/terraform-provider-hashicups/releases/download/v{{version}}/terraform-provider-hashicups_{{version}}_SHA256SUMS.sig
+      filename: terraform_{{version}}_{{os}}_{{arch}}.zip
+      download_url: https://releases.hashicorp.com/terraform-provider-aws/{{version}}/terraform-provider-aws_{{version}}_{{os}}_{{arch}}.zip
+      shasums_url: https://releases.hashicorp.com/terraform-provider-aws/{{version}}/terraform-provider-aws_{{version}}_SHA256SUMS
+      shasums_signature_url: https://github.com/hashicorp/terraform-provider-aws/releases/download/v{{version}}/terraform_{{version}}_SHA256SUMS.sig
