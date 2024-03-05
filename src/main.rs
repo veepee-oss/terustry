@@ -46,12 +46,13 @@ async fn versions(
     State(data): State<Arc<AppState>>,
     Path((namespace, name)): Path<(String, String)>,
 ) -> Result<Json<VersionsResponse>, AppError> {
-    info!("list versions");
+    info!("list versions of {}/{}", namespace, name);
     let provider = get_provider_conf(&data.conf, namespace, name)?;
     Ok(Json(VersionsResponse {
         id: provider.name.clone(),
         versions: versions::get_versions(&data.client, &provider)
-            .await?
+            .await
+            .inspect_err(|e| log::error!("Error getting versions: {}", e))?
             .iter()
             .map(|version| Version {
                 version: version.to_owned().trim_start_matches('v').to_string(),
@@ -74,7 +75,7 @@ async fn download(
     State(data): State<Arc<AppState>>,
     Path((namespace, name, version, os, arch)): Path<(String, String, String, String, String)>,
 ) -> Result<Json<DownloadResponse>, AppError> {
-    info!("download");
+    info!("download {}/{}/{} for {}/{}", namespace, name, version, os, arch);
     Ok(Json(
         artifacts::get(
             &data.client,
@@ -83,7 +84,8 @@ async fn download(
             os,
             arch,
         )
-        .await?,
+        .await
+        .inspect_err(|e| log::error!("Error download: {}", e))?,
     ))
 }
 

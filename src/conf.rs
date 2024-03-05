@@ -75,5 +75,11 @@ pub fn os_env_hashmap() -> HashMap<String, String> {
         .collect()
 }
 pub async fn load_conf(file: String) -> anyhow::Result<Configuration> {
-    Ok(serde_yaml::from_str(&fs::read_to_string(file)?)?)
+    Ok(match serde_yaml::from_str(match &fs::read_to_string(file.clone()){
+        Ok(content) => content,
+        Err(e) => return Err(anyhow::anyhow!("Can't load config file {}: {}", file, e))
+    }){
+        Ok(conf) => conf,
+        Err(e) => return Err(anyhow::anyhow!("Can't parse config file {}: {}", file, e))
+    })
 }

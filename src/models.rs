@@ -69,5 +69,6 @@ pub struct Root {
 
 #[derive(Serialize)]
 pub struct WellKnown {
+    #[serde(rename = "providers.v1")]
     pub providers_v1: String,
 }

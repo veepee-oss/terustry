@@ -45,6 +45,7 @@ pub async fn sha(
 #[cached::proc_macro::cached(
     result = true,
     sync_writes = true,
+    result_fallback = true,
     time = 600,
     key = "String",
     convert = r#"{ format!("get_artifacts_{}_{}_{}_{}", provider.name, version, os, arch) }"#

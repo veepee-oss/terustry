@@ -6,6 +6,7 @@ use crate::{github, gitlab};
 #[cached::proc_macro::cached(
     result = true,
     sync_writes = true,
+    result_fallback = true,
     time = 600,
     key = "String",
     convert = r#"{ format!("get_versions_{}", provider.name) }"#
