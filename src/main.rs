@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::conf::{Configuration, ConfigurationProvider};
 use crate::errors::AppError;
@@ -9,7 +10,7 @@ use axum::routing::get;
 
 use axum::{Json, Router};
 use clap::Parser;
-use reqwest::Client;
+use reqwest::{Client, ClientBuilder};
 use tracing::info;
 
 mod artifacts;
@@ -106,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
     let opts: Opts = Opts::parse();
     tracing_subscriber::fmt().json().init();
     log::info!("Starting terustry");
-
+    let client_builder = ClientBuilder::new().timeout(Duration::new(10, 0));
     let app = Router::new()
         .route("/", get(root))
         .route("/.well-known/terraform.json", get(well_known))
@@ -120,7 +121,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .with_state(Arc::new(AppState {
             conf: conf::load_conf(opts.config).await?,
-            client: Client::new(),
+            client: client_builder.build()?,
         }));
     Ok(axum::serve(tokio::net::TcpListener::bind("0.0.0.0:8080").await?, app).await?)
 }
