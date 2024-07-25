@@ -4,9 +4,12 @@ use std::time::Duration;
 use crate::conf::{Configuration, ConfigurationProvider};
 use crate::errors::AppError;
 use crate::models::*;
+
 use anyhow::anyhow;
+use artifacts::ArtifactClient;
 use axum::extract::{Path, State};
 use axum::routing::get;
+use versions::VersionClient;
 
 use axum::{Json, Router};
 use clap::Parser;
@@ -19,6 +22,7 @@ mod errors;
 mod github;
 mod gitlab;
 mod models;
+// NOTE: What is the difference between `use crate` and `mod`?
 mod versions;
 
 async fn root() -> Json<Root> {
@@ -49,9 +53,11 @@ async fn versions(
 ) -> Result<Json<VersionsResponse>, AppError> {
     info!("list versions of {}/{}", namespace, name);
     let provider = get_provider_conf(&data.conf, namespace, name)?;
+    let version_client = &data.version_client;
     Ok(Json(VersionsResponse {
         id: provider.name.clone(),
-        versions: versions::get_versions(&data.client, &provider)
+        versions: version_client
+            .get_versions(&data.client, &provider)
             .await
             .inspect_err(|e| log::error!("Error getting versions: {}", e))?
             .iter()
@@ -72,13 +78,24 @@ async fn versions(
     }))
 }
 
+async fn invalidate_versions(
+    State(data): State<Arc<AppState>>,
+    Path((namespace, name)): Path<(String, String)>,
+) -> Result<(), AppError> {
+    let provider = get_provider_conf(&data.conf, namespace, name)?;
+    let version_client = &data.version_client;
+    version_client.invalidate(&provider).await;
+    Ok(())
+}
+
 async fn download(
     State(data): State<Arc<AppState>>,
     Path((namespace, name, version, os, arch)): Path<(String, String, String, String, String)>,
 ) -> Result<Json<DownloadResponse>, AppError> {
     info!("download {}/{}/{} for {}/{}", namespace, name, version, os, arch);
+    let artifact_client = &data.artifact_client;
     Ok(Json(
-        artifacts::get(
+        artifact_client.get(
             &data.client,
             get_provider_conf(&data.conf, namespace, name)?,
             version,
@@ -90,9 +107,26 @@ async fn download(
     ))
 }
 
+async fn invalidate_artifact(
+    State(data): State<Arc<AppState>>,
+    Path((namespace, name, version, os, arch)): Path<(String, String, String, String, String)>,
+) -> Result<(), AppError> {
+    let provider = get_provider_conf(&data.conf, namespace, name)?;
+    let artifact_client = &data.artifact_client;
+    artifact_client.invalidate(
+        provider,
+        version,
+        os,
+        arch
+    ).await;
+    Ok(())
+}
+
 struct AppState {
     conf: Configuration,
     client: Client,
+    version_client: VersionClient,
+    artifact_client: ArtifactClient,
 }
 
 #[derive(Parser, Debug)]
@@ -108,6 +142,8 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().json().init();
     log::info!("Starting terustry");
     let client_builder = ClientBuilder::new().timeout(Duration::new(10, 0));
+    let version_client = VersionClient::new();
+    let artifact_client = ArtifactClient::new();
     let app = Router::new()
         .route("/", get(root))
         .route("/.well-known/terraform.json", get(well_known))
@@ -116,12 +152,22 @@ async fn main() -> anyhow::Result<()> {
             get(versions),
         )
         .route(
+            "/terraform/providers/v1/:namespace/:name/invalidate",
+            get(invalidate_versions),
+        )
+        .route(
             "/terraform/providers/v1/:namespace/:name/:version/download/:os/:arch",
             get(download),
+        )
+        .route(
+            "/terraform/providers/v1/:namespace/:name/:version/invalidate/:os/:arch",
+            get(invalidate_artifact),
         )
         .with_state(Arc::new(AppState {
             conf: conf::load_conf(opts.config).await?,
             client: client_builder.build()?,
+            version_client,
+            artifact_client,
         }));
     Ok(axum::serve(tokio::net::TcpListener::bind("0.0.0.0:8080").await?, app).await?)
 }

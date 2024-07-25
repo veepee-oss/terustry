@@ -1,10 +1,64 @@
+use std::collections::HashMap;
+use std::time::Duration;
+
 use anyhow::Result;
 use handlebars::Handlebars;
+use moka::future::Cache;
 use reqwest::Client;
-use std::collections::HashMap;
 
 use crate::conf::ConfigurationProvider;
 use crate::models::{DownloadResponse, GpgPublicKey, SigningKey};
+
+pub struct ArtifactClient {
+    artifact_cache: Cache<String, DownloadResponse>,
+}
+
+impl ArtifactClient {
+    pub fn new() -> Self {
+        Self {
+            artifact_cache: Cache::builder()
+                .max_capacity(1_000)
+                .time_to_live(Duration::from_secs(5))
+                .build(),
+        }
+    }
+
+    pub async fn invalidate(
+        &self,
+        provider: ConfigurationProvider,
+        version: String,
+        os: String,
+        arch: String,
+    ) {
+        let key = format!(
+            "get_artifacts_{}_{}_{}_{}",
+            provider.name, version, os, arch
+        );
+        self.artifact_cache.invalidate(&key).await
+    }
+
+    pub async fn get(
+        &self,
+        client: &Client,
+        provider: ConfigurationProvider,
+        version: String,
+        os: String,
+        arch: String,
+    ) -> Result<DownloadResponse> {
+        let key = format!(
+            "get_artifacts_{}_{}_{}_{}",
+            provider.name, version, os, arch
+        );
+        let result = self
+            .artifact_cache
+            .try_get_with(key, fetch(client, provider, version, os, arch));
+        match result.await {
+            Ok(vec) => Ok(vec),
+            // NOTE "could not fetch artefact {}/{}/{}/{}", provider.name, version, os, arch
+            Err(_) => anyhow::bail!(format!("could not fetch artefact")),
+        }
+    }
+}
 
 pub async fn sha(
     client: &Client,
@@ -42,14 +96,7 @@ pub async fn sha(
     ))
 }
 
-#[cached::proc_macro::cached(
-    result = true,
-    result_fallback = true,
-    time = 600,
-    key = "String",
-    convert = r#"{ format!("get_artifacts_{}_{}_{}_{}", provider.name, version, os, arch) }"#
-)]
-pub async fn get(
+pub async fn fetch(
     client: &Client,
     provider: ConfigurationProvider,
     version: String,
@@ -90,7 +137,7 @@ pub async fn get(
             },
         }),
         Err(err) => {
-            log::warn!("could not fetch artefact {}/{}/{}/{}: {}",
+            log::warn!("could not fetch artifact {}/{}/{}/{}: {}",
                 provider.name, version, os, arch, err);
             Err(err)
         }
