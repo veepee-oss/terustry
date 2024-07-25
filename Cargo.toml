@@ -6,7 +6,7 @@ rust-version = "1.79"
 
 [dependencies]
 tracing = "0.1"
-tracing-subscriber ={ version = "0.3", features = ["json", "env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter", "fmt"] }
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
@@ -16,4 +16,5 @@ tokio = { version = "1.38", features = ["rt-multi-thread", "net", "macros"] }
 reqwest = { version = "0.12", features = ["rustls-tls", "json"] }
 axum = { version = "0.7" }
 anyhow = "1.0"
-cached ={ version = "0.52", features = ["async", "async_tokio_rt_multi_thread"] }
+cached = { version = "0.52", features = ["async", "async_tokio_rt_multi_thread"] }
+moka = { version = "0.12.8", features = ["future"] }

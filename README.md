@@ -98,3 +98,21 @@ mkcert localhost
 local-ssl-proxy --source 8081 --target 8080 --key localhost-key.pem --cert localhost.pem
 ```
 
+### Caching
+
+By default, Terustry will cache responses from Github/Gitlab for 10 minutes. This
+may result in an unwanted behaviour where a recently released version for a given
+provider is not available.
+
+The new version will become available once the cache is refreshed.
+
+However, if you need a faster refresh timing, for example in a CI/CD pipeline, you
+may request a specific cache entry to be invalidated using the following route:
+`GET /terraform/providers/v1/{namespace}/{provider_name}/invalidate`
+
+This should result in an empty 200 OK response.
+
+For example:
+```bash
+curl http://localhost:8080/terraform/providers/v1/hashicorp/hashicups/invalidate
+```
