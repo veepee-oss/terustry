@@ -1,4 +1,4 @@
-FROM rust:1.79 as builder
+FROM rust:1.80 as builder
 
 WORKDIR /terustry
 COPY . ./

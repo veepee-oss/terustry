@@ -2,7 +2,7 @@
 name = "terustry"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.79"
+rust-version = "1.80"
 
 [dependencies]
 tracing = "0.1"
@@ -11,10 +11,9 @@ clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 log = "0.4"
-handlebars = "5.1"
-tokio = { version = "1.38", features = ["rt-multi-thread", "net", "macros"] }
+handlebars = "6.0"
+tokio = { version = "1.39", features = ["rt-multi-thread", "net", "macros"] }
 reqwest = { version = "0.12", features = ["rustls-tls", "json"] }
 axum = { version = "0.7" }
 anyhow = "1.0"
-cached = { version = "0.52", features = ["async", "async_tokio_rt_multi_thread"] }
-moka = { version = "0.12.8", features = ["future"] }
+moka = { version = "0.12", features = ["future"] }
